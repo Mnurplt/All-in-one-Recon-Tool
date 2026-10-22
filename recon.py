@@ -6,7 +6,9 @@ Purpose: Asynchronous Network & Web Attack Surface Discovery
 """
 import argparse
 import asyncio
+import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from core import (
@@ -19,6 +21,7 @@ from core import (
     log_error,
     log_status,
 )
+from modules import run_port_scan
 
 
 def parse_ports(port_arg: str) -> list[int]:
@@ -145,7 +148,7 @@ async def main_async() -> None:
     parser = build_cli_parser()
     args = parser.parse_args()
     
-    # Validate target
+    # Validate and clean target
     target = args.target.strip().replace("http://", "").replace("https://", "").rstrip("/")
     if not target:
         log_error("Target cannot be empty!")
@@ -158,7 +161,8 @@ async def main_async() -> None:
     )
     
     # Port configuration
-    if args.ports or args.all:
+    should_scan_ports = args.ports is not None or args.all or not (args.subdomains or args.dirs or args.vhosts)
+    if should_scan_ports:
         port_spec = args.ports if args.ports else "top20"
         config.ports = parse_ports(port_spec)
         
@@ -168,7 +172,7 @@ async def main_async() -> None:
     
     # Check what modes are active
     active_modes = []
-    if args.ports or args.all:
+    if should_scan_ports:
         active_modes.append(f"Port Scan ({len(config.ports)} ports)")
     if args.subdomains or args.all:
         active_modes.append("Subdomain Enumeration")
@@ -177,13 +181,31 @@ async def main_async() -> None:
     if args.vhosts or args.all:
         active_modes.append("VHost Enumeration")
         
-    if not active_modes:
-        log_warn("No scan mode specified! Defaulting to Port Scan (-p top20). Use --help to view all options.")
-        config.ports = parse_ports("top20")
-        active_modes.append(f"Port Scan ({len(config.ports)} ports)")
-        
     log_info(f"Active Scan Modules: [bold cyan]{', '.join(active_modes)}[/bold cyan]")
-    log_success("Engine initialized successfully. Ready to execute modules.")
+    
+    scan_results = {
+        "target": config.target,
+        "concurrency": config.concurrency_limit,
+    }
+    
+    # Phase 2: Execute Port Scan
+    if should_scan_ports:
+        ports_result = await run_port_scan(config)
+        scan_results["ports"] = [asdict(r) for r in ports_result]
+        
+    # Phase 3-5: Future Modules hook here
+    if args.subdomains or args.all:
+        log_warn("Subdomain module scheduled for Phase 3.")
+    if args.dirs or args.all:
+        log_warn("Directory fuzzing module scheduled for Phase 4.")
+    if args.vhosts or args.all:
+        log_warn("VHost module scheduled for Phase 5.")
+        
+    # Save results to JSON if requested
+    if args.output:
+        out_path = Path(args.output)
+        out_path.write_text(json.dumps(scan_results, indent=2), encoding="utf-8")
+        log_success(f"Results saved to: [bold white]{out_path.resolve()}[/bold white]")
 
 
 def main() -> None:
