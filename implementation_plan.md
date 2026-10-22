@@ -1,63 +1,89 @@
-# All-in-One Recon Tool — Implementation Plan
+# 🚀 All-in-One Recon Tool — Implementation & Progress Plan
 
-## Proje Nedir
+## 📌 Proje Özeti ve Vizyon
 
-**All-in-One Recon Tool**, bir pentest/bug bounty engagement'ının **recon (keşif) fazını** tek bir çatı altında toplayan, Python ile geliştirilen modüler bir araçtır. Amaç, piyasada ayrı ayrı var olan recon araçlarının (nmap, gobuster, subfinder, gobuster vhost gibi) işlevlerini kendi implementasyonlarıyla bir araya getirip, hem **tek başına** hem de **birbirine zincirlenmiş (piped)** şekilde çalışabilen tutarlı bir sistem kurmaktır.
+**All-in-One Recon Tool**, modern bir siber güvenlik testinde (penetration testing & bug bounty) **saldırı yüzeyi keşfi (attack surface mapping)** sürecini tek bir çatı altında toplayan, asenkron mimaride geliştirilmiş modüler bir Python framework'üdür.
 
-### Kapsanan modüller
-
-1. **Network enumeration** — hedefteki açık portları ve servisleri tespit eden modül (nmap mantığına dayalı).
-2. **Web dizin/dosya tarama (directory brute-forcing)** — bir web hedefinde gizli dizin ve dosyaları bulan modül (gobuster/ffuf mantığına dayalı).
-3. **Subdomain tarama** — bir domain altındaki alt alan adlarını keşfeden modül.
-4. **Virtual host (vhost) tarama** — aynı IP üzerinde barındırılan farklı sanal hostları tespit eden modül.
-
-### Tasarım felsefesi: Modülerlik + Entegrasyon
-
-Projenin en kritik tasarım kararı şudur: her modül **bağımsız, kendi başına çalışabilen bir araç** olarak yazılır (kendi CLI argümanları, kendi girdi/çıktı formatı ile), ama aynı zamanda modüller arasında **pipe (|) yöntemiyle veri aktarımı** yapılabilecek şekilde tasarlanır. Yani:
-
-- Kullanıcı sadece network enumeration modülünü tek başına çalıştırabilir.
-- Kullanıcı network enumeration çıktısını doğrudan web dizin tarama modülüne pipe'layarak, bulunan HTTP servisleri üzerinde otomatik dizin taraması başlatabilir.
-- Aynı mantık subdomain → vhost → dizin tarama zincirinde de kurulabilir.
-
-Bu, hem UNIX felsefesine (her araç bir işi iyi yapar, araçlar birbirine bağlanabilir) uygun bir yapı hem de tek bir monolitik script yerine, her modülün ayrı ayrı test edilip geliştirilebildiği sürdürülebilir bir mimari sağlar.
+Piyasada birbirinden kopuk çalışan araçların (Nmap, Gobuster, Subfinder, Feroxbuster) temel yeteneklerini, harici ikili dosya (binary) bağımlılığı olmadan **saf Python (`asyncio`, `aiohttp`, `dnspython`, `rich`)** kullanarak bir araya getirir.
 
 ---
 
-## Proje Adımları ve Süreçler
+## 🏗️ Mimari ve Tasarım İlkeleri
 
-### Adım 1 — Teorik Altyapı
-Projeye başlamadan önce gerekli teorik temeli oluşturmak:
-- **PortSwigger Web Security Academy** kaynaklarından web uygulama güvenliği ve ilgili zafiyet sınıfları üzerine çalışma.
-- **Black Hat Python** kitabından, özellikle ağ programlama, brute-forcing ve fuzzing ile ilgili bölümlerden pratik Python/network programlama bilgisi edinme.
-
-*Çıktı: Modülleri yazmak için gereken teorik ve pratik Python/network/web bilgisi.*
-
-### Adım 2 — Network Enumeration Modülü
-Projenin ilk teknik bileşeni olarak network enumeration (port/servis tarama) modülünün geliştirilmesi.
-- Hedef host(lar) üzerinde port tarama mantığının kodlanması.
-- Açık portlardan servis/banner bilgisinin çıkarılması.
-- Sonuçların, sonraki modüllere aktarılabilecek yapılandırılmış bir formatta (ör. JSON/plain text) üretilmesi.
-
-*Çıktı: Bağımsız çalışabilen, komut satırından bir hedef alıp açık port/servis listesi üreten ilk modül.*
-
-### Adım 3 — Web Dizin Tarama Modülü ve Pipe Entegrasyonu
-- Web dizin/dosya tarama (directory brute-forcing) modülünün geliştirilmesi: bir hedef URL ve wordlist alıp, var olan dizin/dosyaları tespit etme.
-- **Modüller arası pipe entegrasyonunun kurulması**: Adım 2'deki network enumeration modülünün çıktısının, bu modüle doğrudan girdi olarak verilebilmesi (örn. `python network_scan.py <hedef> | python dir_scan.py`).
-- Pipe yönteminin genel bir standart haline getirilmesi — yani bundan sonra eklenecek her modülün bu aynı girdi/çıktı sözleşmesine uyması.
-
-*Çıktı: Web dizin tarama modülü + network ve web tarama modüllerinin birbirine zincirlenebildiği çalışan bir pipeline.*
-
-### Adım 4 — Subdomain ve Virtual Host Tarama Modülleri
-- **Subdomain tarama modülü**: bir ana domain altındaki alt alan adlarını (wordlist tabanlı ve/veya DNS sorgularıyla) keşfeden bileşenin geliştirilmesi.
-- **Virtual host tarama modülü**: aynı IP adresinde barındırılan, farklı Host header'larıyla ayrışan sanal hostları tespit eden bileşenin geliştirilmesi.
-- Bu iki modülün de Adım 3'te kurulan pipe standardına uygun şekilde entegre edilmesi — böylece subdomain/vhost sonuçları da doğrudan dizin tarama veya network enumeration modüllerine aktarılabilir hale gelir.
-
-*Çıktı: Dört modülün tamamının bağımsız ve zincirlenebilir şekilde çalıştığı, projenin ilk eksiksiz versiyonu.*
+1. **Non-Blocking Asenkron Çekirdek:**
+   * Klasik `multithreading` yerine Python'ın `asyncio` Event Loop mimarisi kullanılır.
+   * `asyncio.Semaphore` ile eşzamanlı istek/soket limitleri kontrol altında tutulur (`socket exhaustion` ve işletim sistemi çökmeleri engellenir).
+2. **Derinlemesine Ağ ve Protokol Anlayışı:**
+   * "Vibe coding" yerine her modülde ilgili OSI katmanının (L4 TCP Handshake, L7 DNS, L7 HTTP) protokol davranışları ve paket seviyesindeki mantığı gözetilir.
+3. **Modülerlik ve Zincirlenebilirlik (Pipeline Ready):**
+   * Her modül hem bağımsız olarak çalışabilir hem de `target -> subdomains -> open ports -> web fuzzing -> vhosts` zincirinde bir diğer modüle girdi sağlayacak standart veri formatlarına (JSON / Python dataclass) sahiptir.
+4. **PortSwigger Hibrit Sinerjisi:**
+   * Araç geliştirme süreci, PortSwigger Web Security Academy labları (95 lab) ile eşzamanlı yürütülür (Keşif Modülü ➔ Zafiyet Sömürüsü).
 
 ---
 
-## Sonraki Adımlar (bu dosyanın kapsamı dışında, ileride planlanacak)
+## 🧭 Fazlar ve Güncel Durum Tablosu
 
-- Her modül için README/kullanım dokümantasyonu.
-- Orchestrator (ana akışı yöneten) bir script ile tüm modüllerin tek bir komutla uçtan uca zincirlenmesi.
-- Hız/performans ayarları (thread/rate limiting) ve hata yönetimi.
+| Faz | Modül / Konu | Katman | Durum |
+| :---: | :--- | :---: | :---: |
+| **Faz 1** | **Asenkron Çekirdek, CLI (`recon.py`), Logger & Config** | Core / Engine | ✅ **Tamamlandı** |
+| **Faz 2** | **L4 TCP Port Scanner & Banner Grabbing (`port_scanner.py`)** | L4 Transport | ✅ **Tamamlandı** |
+| **Faz 3** | **L7 Subdomain Discovery (DNS Brute-Force + `crt.sh` + Wildcard)** | L7 DNS / OSINT | ⏳ **Sırada** |
+| **Faz 4** | **L7 Web Directory & File Fuzzer (`dir_scanner.py` + Soft-404)** | L7 HTTP | 📋 Planlandı |
+| **Faz 5** | **L7 Virtual Host (VHost) Enumerator (`vhost_scanner.py`)** | L7 Reverse Proxy | 📋 Planlandı |
+| **Faz 6** | **Pipeline Entegrasyonu, Birleşik Raporlama & Staj Savunması** | Integration | 📋 Planlandı |
+
+---
+
+## 🛠️ Tamamlanan Aşamalar Detayı
+
+### ✅ Faz 1: Asenkron Motor ve Proje İskeleti (Tamamlandı)
+* **Bağımlılıklar:** `aiohttp>=3.9.0`, `dnspython>=2.6.0`, `rich>=13.7.0` yapılandırıldı.
+* **`core/config.py`:** `@dataclass` tabanlı merkezi yapılandırma sınıfı oluşturuldu (`ReconConfig`).
+* **`core/logger.py`:** `rich` tabanlı renkli konsol çıktıları ve Windows terminalindeki `CP1254/UTF-8` Unicode kodlama uyumluluğu sağlandı.
+* **`recon.py`:** `argparse` ile komut satırı arayüzü kuruldu (`-t`, `-p`, `--subdomains`, `--dirs`, `--vhosts`, `--all`, `-c`, `-o`).
+* **`wordlists/`:** Subdomain, dizin ve vhost testleri için dahili mini sözlükler hazırlandı.
+
+### ✅ Faz 2: L4 Port Scanner & Banner Grabbing (Tamamlandı)
+* **`modules/port_scanner.py`:**
+  * `asyncio.open_connection` ile root gerektirmeyen taşınabilir **TCP Connect Scan** yazıldı.
+  * Açık (`SYN-ACK`), kapalı (`RST`) ve filtrelenmiş (`DROP / Timeout`) port durumları ayrıştırıldı.
+  * **İki Kademeli Banner Grabbing:**
+    1. *Pasif Dinleme:* İlk konuşan servisler (SSH, FTP, SMTP, MySQL) için 1.5s soket okuması.
+    2. *Aktif HTTP Probu:* İstemci bekleyen web servisleri için `HEAD / HTTP/1.0` probu ve `Server:` başlığı ayrıştırma.
+  * `time.perf_counter()` ile milisaniye hassasiyetinde bağlantı gecikmesi (latency) ölçümü.
+  * `scanme.nmap.org` üzerinde test edilip doğrulandı; JSON çıktı desteği eklendi.
+
+---
+
+## 📋 Sıradaki Adımlar
+
+### ⏳ Faz 3: L7 Subdomain Enumeration (Sıradaki Adım)
+* `dnspython` asenkron resolver entegrasyonu (A, CNAME sorguları).
+* **Wildcard DNS Tespiti:** Rastgele üretilen bir alt alan adı (`random-uuid.target.com`) çözümlenerek sahte pozitiflerin (false-positive) elenmesi.
+* **crt.sh Pasif OSINT:** Hedefe sıfır DNS paketi göndermeden SSL/TLS Certificate Transparency loglarından alt alan adlarının çekilmesi.
+
+### 📋 Faz 4: L7 Directory & File Fuzzing
+* `aiohttp.ClientSession` bağlantı havuzu (connection pooling) ile yüksek hızlı HTTP GET/HEAD istekleri.
+* Uzantı fuzzer (`.php`, `.txt`, `.html`, `.bak`, `.json`).
+* **Soft-404 Filtreleme:** HTTP 200 dönen sahte hata sayfalarını gövde boyutu (Content-Length) veya kelime sayısı benzerliğiyle eleme.
+
+### 📋 Faz 5: L7 Virtual Host (VHost) Enumerator
+* Aynı IP adresine farklı `Host: <subdomain>.target.com` başlıkları gönderilerek ters proxy (Nginx/Apache vhost) yönlendirmelerinin yakalanması.
+* Baseline Profiling ile varsayılan host yanıtının filtrelenmesi.
+
+### 📋 Faz 6: Büyük Entegrasyon & Staj Raporu
+* Modüllerin tek bir komutla (`python recon.py -t target.com --all`) birbirine veri aktarması.
+* HTML ve JSON formatında son kullanıcı raporu.
+* Staj koordinatörüne ve jüriye sunulmak üzere **Teknik Mimari ve Protokol Analiz Dokümantasyonu**.
+
+---
+
+## 🎯 PortSwigger Hibrit Eşleştirme Takvimi (95 Lab)
+
+| Hafta | Recon Proje Fazı | Eşleşen PortSwigger Konuları | Lab Sayısı | Temel Sinerji |
+| :---: | :--- | :--- | :---: | :--- |
+| **1. Hafta** | Faz 1 & Faz 2 (L4 Port Scan) | **Information Disclosure** (5) + **SSRF** (7) + **Authentication** (14) | 26 Lab | Port tarama ve dahili IP/port keşfi doğrudan SSRF'in temelidir. Banner grabbing ise Information Disclosure ile örtüşür. |
+| **2. Hafta** | Faz 3 (L7 Subdomain) | **Access Control** (13) + **JWT Attacks** (8) + **CORS** (3) | 24 Lab | Keşfedilen alt alan adlarındaki admin panelleri ve CORS yapılandırma hataları. |
+| **3. Hafta** | Faz 4 (L7 Dizin Fuzzing) | **Business Logic** (11) + **CSRF** (12) | 23 Lab | Dizin taramasında bulunan gizli ödeme/transfer API'lerinin mantık analizi. |
+| **4. Hafta** | Faz 5 & Faz 6 (VHost & Final) | **HTTP Request Smuggling** (22) | 22 Lab | VHost modülündeki Ters Proxy mimarisi, Request Smuggling'in tam temelini oluşturur. |
