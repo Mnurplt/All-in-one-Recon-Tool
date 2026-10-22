@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""
+All-In-One Recon Framework
+Author: Nur & AI Co-Engineer
+Purpose: Asynchronous Network & Web Attack Surface Discovery
+"""
+import argparse
+import asyncio
+import sys
+from pathlib import Path
+
+from core import (
+    ReconConfig,
+    console,
+    print_banner,
+    log_info,
+    log_success,
+    log_warn,
+    log_error,
+    log_status,
+)
+
+
+def parse_ports(port_arg: str) -> list[int]:
+    """
+    Parses port arguments supporting:
+    - Comma-separated: '80,443,8080'
+    - Range: '1-100'
+    - Presets: 'top20', 'top100'
+    """
+    if not port_arg:
+        return []
+        
+    port_arg = port_arg.strip().lower()
+    
+    top_20 = [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3389, 8080, 8443]
+    top_100 = top_20 + [
+        7, 9, 13, 26, 37, 79, 88, 106, 113, 119, 144, 179, 199, 389, 427, 465, 513, 514, 515, 543, 548, 554,
+        587, 631, 646, 873, 990, 1025, 1026, 1027, 1028, 1029, 1110, 1433, 1720, 2000, 2049, 2121, 2717,
+        3000, 3128, 3268, 3986, 4000, 4899, 5000, 5009, 5051, 5060, 5101, 5190, 5357, 5432, 5631, 5666,
+        5800, 5900, 6000, 6001, 6646, 7070, 8000, 8008, 8009, 8081, 8443, 8888, 9000, 9100, 9999, 10000,
+        32768, 49152, 49153, 49154, 49155, 49156, 49157
+    ]
+    
+    if port_arg == "top20":
+        return top_20
+    elif port_arg == "top100":
+        return sorted(list(set(top_100)))
+        
+    ports = set()
+    for part in port_arg.split(","):
+        part = part.strip()
+        if "-" in part:
+            start, end = part.split("-", 1)
+            ports.update(range(int(start), int(end) + 1))
+        elif part.isdigit():
+            ports.add(int(part))
+            
+    return sorted(list(ports))
+
+
+def build_cli_parser() -> argparse.ArgumentParser:
+    """Builds the command-line argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="recon.py",
+        description="All-In-One Network & Web Reconnaissance Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    
+    parser.add_argument(
+        "-t", "--target",
+        type=str,
+        required=True,
+        help="Target domain or IP address (e.g. example.com or 192.168.1.50)",
+    )
+    
+    # Scan modes
+    mode_group = parser.add_argument_group("Scan Modes (Choose one or more)")
+    mode_group.add_argument(
+        "-a", "--all",
+        action="store_true",
+        help="Run all enumeration modules (Ports, Subdomains, Dirs, VHosts)",
+    )
+    mode_group.add_argument(
+        "-p", "--ports",
+        nargs="?",
+        const="top20",
+        type=str,
+        help="Run TCP port scan. (e.g. 'top20', 'top100', '80,443,8080', '1-1024')",
+    )
+    mode_group.add_argument(
+        "--subdomains",
+        action="store_true",
+        help="Run Subdomain enumeration (DNS Brute-force + crt.sh OSINT)",
+    )
+    mode_group.add_argument(
+        "--dirs",
+        action="store_true",
+        help="Run HTTP directory and file fuzzing",
+    )
+    mode_group.add_argument(
+        "--vhosts",
+        action="store_true",
+        help="Run Virtual Host (VHost) header fuzzing",
+    )
+    
+    # Performance & Concurrency
+    perf_group = parser.add_argument_group("Performance & Tuning")
+    perf_group.add_argument(
+        "-c", "--concurrency",
+        type=int,
+        default=100,
+        help="Maximum concurrent async tasks / connections (default: 100)",
+    )
+    perf_group.add_argument(
+        "--timeout",
+        type=float,
+        default=3.0,
+        help="Socket / HTTP connection timeout in seconds (default: 3.0)",
+    )
+    
+    # Wordlists
+    wl_group = parser.add_argument_group("Wordlists")
+    wl_group.add_argument(
+        "--wordlist",
+        type=str,
+        help="Custom wordlist path (applies to active fuzzing mode)",
+    )
+    
+    # Output
+    out_group = parser.add_argument_group("Output & Reporting")
+    out_group.add_argument(
+        "-o", "--output",
+        type=str,
+        help="Path to save JSON scan results (e.g. report.json)",
+    )
+    
+    return parser
+
+
+async def main_async() -> None:
+    """Asynchronous entry point."""
+    print_banner()
+    
+    parser = build_cli_parser()
+    args = parser.parse_args()
+    
+    # Validate target
+    target = args.target.strip().replace("http://", "").replace("https://", "").rstrip("/")
+    if not target:
+        log_error("Target cannot be empty!")
+        sys.exit(1)
+        
+    config = ReconConfig(
+        target=target,
+        concurrency_limit=args.concurrency,
+        timeout=args.timeout,
+    )
+    
+    # Port configuration
+    if args.ports or args.all:
+        port_spec = args.ports if args.ports else "top20"
+        config.ports = parse_ports(port_spec)
+        
+    log_info(f"Target: [bold white]{config.target}[/bold white]")
+    log_info(f"Concurrency Limit (Semaphore): [bold yellow]{config.concurrency_limit}[/bold yellow]")
+    log_info(f"Network Timeout: [bold yellow]{config.timeout}s[/bold yellow]")
+    
+    # Check what modes are active
+    active_modes = []
+    if args.ports or args.all:
+        active_modes.append(f"Port Scan ({len(config.ports)} ports)")
+    if args.subdomains or args.all:
+        active_modes.append("Subdomain Enumeration")
+    if args.dirs or args.all:
+        active_modes.append("Directory Fuzzing")
+    if args.vhosts or args.all:
+        active_modes.append("VHost Enumeration")
+        
+    if not active_modes:
+        log_warn("No scan mode specified! Defaulting to Port Scan (-p top20). Use --help to view all options.")
+        config.ports = parse_ports("top20")
+        active_modes.append(f"Port Scan ({len(config.ports)} ports)")
+        
+    log_info(f"Active Scan Modules: [bold cyan]{', '.join(active_modes)}[/bold cyan]")
+    log_success("Engine initialized successfully. Ready to execute modules.")
+
+
+def main() -> None:
+    """CLI launcher with graceful keyboard interrupt handling."""
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        console.print("\n[bold red][!] Scan aborted by user (Ctrl+C). Cleaning up tasks...[/bold red]")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
