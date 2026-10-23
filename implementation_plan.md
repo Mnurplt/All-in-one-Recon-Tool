@@ -28,8 +28,8 @@ Piyasada birbirinden kopuk çalışan araçların (Nmap, Gobuster, Subfinder, Fe
 | :---: | :--- | :---: | :---: |
 | **Faz 1** | **Asenkron Çekirdek, CLI (`recon.py`), Logger & Config** | Core / Engine | ✅ **Tamamlandı** |
 | **Faz 2** | **L4 TCP Port Scanner & Banner Grabbing (`port_scanner.py`)** | L4 Transport | ✅ **Tamamlandı** |
-| **Faz 3** | **L7 Subdomain Discovery (DNS Brute-Force + `crt.sh` + Wildcard)** | L7 DNS / OSINT | ⏳ **Sırada** |
-| **Faz 4** | **L7 Web Directory & File Fuzzer (`dir_scanner.py` + Soft-404)** | L7 HTTP | 📋 Planlandı |
+| **Faz 3** | **L7 Subdomain Discovery (DNS Brute-Force + `crt.sh` + Wildcard)** | L7 DNS / OSINT | ✅ **Tamamlandı** |
+| **Faz 4** | **L7 Web Directory & File Fuzzer (`dir_scanner.py` + Soft-404)** | L7 HTTP | ⏳ **Sırada** |
 | **Faz 5** | **L7 Virtual Host (VHost) Enumerator (`vhost_scanner.py`)** | L7 Reverse Proxy | 📋 Planlandı |
 | **Faz 6** | **Pipeline Entegrasyonu, Birleşik Raporlama & Staj Savunması** | Integration | 📋 Planlandı |
 
@@ -53,6 +53,14 @@ Piyasada birbirinden kopuk çalışan araçların (Nmap, Gobuster, Subfinder, Fe
     2. *Aktif HTTP Probu:* İstemci bekleyen web servisleri için `HEAD / HTTP/1.0` probu ve `Server:` başlığı ayrıştırma.
   * `time.perf_counter()` ile milisaniye hassasiyetinde bağlantı gecikmesi (latency) ölçümü.
   * `scanme.nmap.org` üzerinde test edilip doğrulandı; JSON çıktı desteği eklendi.
+
+### ✅ Faz 3: L7 Subdomain Enumeration (Tamamlandı)
+* **`modules/subdomain_scanner.py`:**
+  * `dnspython`'ın asenkron çözücüsü (`dns.asyncresolver.Resolver`) ile paralel DNS sorguları (A ve CNAME kayıtları).
+  * **Wildcard DNS Tespiti ve Filtresi:** Rastgele üretilen bir alt alan adı üzerinden `*.domain.com` wildcard IP'si yakalanıp sahte pozitiflerin (false-positive) elenmesi sağlandı.
+  * **Hibrit Pasif OSINT:** `crt.sh` üzerinden SSL/TLS Certificate Transparency logları sorgulanarak hedefe paket göndermeden aday alt alan adları toplandı.
+  * Subdomainlerin CNAME/Alias zincirleri ve milisaniye bazlı DNS çözümleme gecikmeleri hesaplandı.
+  * `python.org` ve `nmap.org` üzerinde test edilip doğrulandı.
 
 ---
 

@@ -50,3 +50,4 @@ kibana
 prometheus
 cpanel
 whm
+scanme

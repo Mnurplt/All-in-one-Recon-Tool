@@ -21,7 +21,7 @@ from core import (
     log_error,
     log_status,
 )
-from modules import run_port_scan
+from modules import run_port_scan, run_subdomain_scan
 
 
 def parse_ports(port_arg: str) -> list[int]:
@@ -119,7 +119,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=float,
         default=3.0,
-        help="Socket / HTTP connection timeout in seconds (default: 3.0)",
+        help="Socket / DNS / HTTP connection timeout in seconds (default: 3.0)",
     )
     
     # Wordlists
@@ -127,7 +127,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     wl_group.add_argument(
         "--wordlist",
         type=str,
-        help="Custom wordlist path (applies to active fuzzing mode)",
+        help="Custom wordlist path (applies to active fuzzing/subdomain mode)",
     )
     
     # Output
@@ -160,8 +160,23 @@ async def main_async() -> None:
         timeout=args.timeout,
     )
     
-    # Port configuration
+    # Custom wordlist override
+    if args.wordlist:
+        custom_wl = Path(args.wordlist)
+        if custom_wl.exists():
+            config.subdomain_wordlist = custom_wl
+            config.dir_wordlist = custom_wl
+            config.vhost_wordlist = custom_wl
+            log_info(f"Using custom wordlist: [bold white]{custom_wl}[/bold white]")
+        else:
+            log_warn(f"Specified wordlist '{args.wordlist}' not found! Using built-in defaults.")
+    
+    # Determine which modes to run
     should_scan_ports = args.ports is not None or args.all or not (args.subdomains or args.dirs or args.vhosts)
+    should_scan_subs = args.subdomains or args.all
+    should_scan_dirs = args.dirs or args.all
+    should_scan_vhosts = args.vhosts or args.all
+    
     if should_scan_ports:
         port_spec = args.ports if args.ports else "top20"
         config.ports = parse_ports(port_spec)
@@ -170,15 +185,14 @@ async def main_async() -> None:
     log_info(f"Concurrency Limit (Semaphore): [bold yellow]{config.concurrency_limit}[/bold yellow]")
     log_info(f"Network Timeout: [bold yellow]{config.timeout}s[/bold yellow]")
     
-    # Check what modes are active
     active_modes = []
     if should_scan_ports:
         active_modes.append(f"Port Scan ({len(config.ports)} ports)")
-    if args.subdomains or args.all:
+    if should_scan_subs:
         active_modes.append("Subdomain Enumeration")
-    if args.dirs or args.all:
+    if should_scan_dirs:
         active_modes.append("Directory Fuzzing")
-    if args.vhosts or args.all:
+    if should_scan_vhosts:
         active_modes.append("VHost Enumeration")
         
     log_info(f"Active Scan Modules: [bold cyan]{', '.join(active_modes)}[/bold cyan]")
@@ -193,12 +207,15 @@ async def main_async() -> None:
         ports_result = await run_port_scan(config)
         scan_results["ports"] = [asdict(r) for r in ports_result]
         
-    # Phase 3-5: Future Modules hook here
-    if args.subdomains or args.all:
-        log_warn("Subdomain module scheduled for Phase 3.")
-    if args.dirs or args.all:
+    # Phase 3: Execute Subdomain Enumeration
+    if should_scan_subs:
+        subs_result = await run_subdomain_scan(config)
+        scan_results["subdomains"] = [asdict(r) for r in subs_result]
+        
+    # Phase 4 & 5: Future Modules hook here
+    if should_scan_dirs:
         log_warn("Directory fuzzing module scheduled for Phase 4.")
-    if args.vhosts or args.all:
+    if should_scan_vhosts:
         log_warn("VHost module scheduled for Phase 5.")
         
     # Save results to JSON if requested
