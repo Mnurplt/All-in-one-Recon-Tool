@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# Python cache and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Output and local test artifacts
+reports/
+*.json
+*.html
+*.log
+.obsidian/
+
+# IDE
+.vscode/
+.idea/

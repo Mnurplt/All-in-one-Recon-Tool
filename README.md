@@ -11,6 +11,7 @@ A high-performance, asynchronous reconnaissance framework written in modern Pyth
 * **L7 Subdomain Discovery (Phase 3):** High-speed asynchronous DNS resolution, wildcard DNS false-positive mitigation, and passive OSINT integration via `crt.sh`.
 * **L7 Directory & File Fuzzer (Phase 4):** Concurrent HTTP fuzzing with `aiohttp.ClientSession` connection pooling, recursive discovery, and Soft-404 detection.
 * **L7 Virtual Host (VHost) Enumerator (Phase 5):** HTTP `Host` header fuzzing with baseline response profiling and content-length/hash similarity comparison.
+* **Cross-Platform & Containerized:** Native compatibility across Windows, macOS, and Linux, plus official **Docker container** support.
 * **Unified Reporting (Phase 6):** Rich terminal tables with real-time feedback and exportable structured reports (JSON/HTML/Markdown).
 
 ---
@@ -20,6 +21,8 @@ A high-performance, asynchronous reconnaissance framework written in modern Pyth
 ```text
 All-In-One-Recon/
 ├── recon.py                # Main CLI entry point
+├── Dockerfile              # Cross-platform containerization definition
+├── .dockerignore           # Container build exclusions
 ├── requirements.txt        # Core dependencies
 ├── README.md               # Project documentation
 ├── .gitignore              # Repository exclusions
@@ -44,30 +47,53 @@ All-In-One-Recon/
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation & Execution
+
+The framework is 100% pure Python without OS-specific C bindings. It runs natively across **Windows, macOS, and Linux**, or via **Docker**.
+
+### Option A: Native Execution (Windows, macOS, Linux)
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/All-In-One-Recon.git
-cd All-In-One-Recon
+git clone https://github.com/Mnurplt/All-in-one-Recon-Tool.git
+cd All-in-one-Recon-Tool
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Run the scanner
+python recon.py -t scanme.nmap.org -p top20
+```
+
+### Option B: Docker Container (Zero-Setup & Cross-Platform)
+
+```bash
+# Build the lightweight Docker image
+docker build -t recon-tool .
+
+# Run the container
+docker run --rm recon-tool -t scanme.nmap.org -p top20
+
+# Run with subdomains and save report to host machine
+docker run --rm -v $(pwd):/app/reports recon-tool -t python.org --subdomains -o reports/output.json
 ```
 
 ---
 
-## 💻 Quick Usage
+## 💻 Quick Usage Examples
 
 ```bash
-# Basic port scan (Top 20 ports)
+# Basic TCP port scan (Top 20 ports)
 python recon.py -t scanme.nmap.org -p top20
 
-# Scan custom ports with custom concurrency limit
-python recon.py -t 192.168.1.1 -p 80,443,8080,8443 -c 200
+# Scan custom ports with custom concurrency limit (100 parallel workers)
+python recon.py -t 192.168.1.1 -p 80,443,8080,8443 -c 100
 
-# Run all enumeration modules (Ports, Subdomains, Dirs, VHosts)
-python recon.py -t example.com --all
+# Subdomain enumeration (DNS Brute-force + crt.sh OSINT + Wildcard Filter)
+python recon.py -t python.org --subdomains
+
+# Run all enumeration modules and export JSON report
+python recon.py -t example.com --all -o report.json
 ```
 
 ---
