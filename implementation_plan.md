@@ -29,8 +29,8 @@ Piyasada birbirinden kopuk çalışan araçların (Nmap, Gobuster, Subfinder, Fe
 | **Faz 1** | **Asenkron Çekirdek, CLI (`recon.py`), Logger & Config** | Core / Engine | ✅ **Tamamlandı** |
 | **Faz 2** | **L4 TCP Port Scanner & Banner Grabbing (`port_scanner.py`)** | L4 Transport | ✅ **Tamamlandı** |
 | **Faz 3** | **L7 Subdomain Discovery (DNS Brute-Force + `crt.sh` + Wildcard)** | L7 DNS / OSINT | ✅ **Tamamlandı** |
-| **Faz 4** | **L7 Web Directory & File Fuzzer (`dir_scanner.py` + Soft-404)** | L7 HTTP | ⏳ **Sırada** |
-| **Faz 5** | **L7 Virtual Host (VHost) Enumerator (`vhost_scanner.py`)** | L7 Reverse Proxy | 📋 Planlandı |
+| **Faz 4** | **L7 Web Directory & File Fuzzer (`dir_scanner.py` + Soft-404)** | L7 HTTP | ✅ **Tamamlandı** |
+| **Faz 5** | **L7 Virtual Host (VHost) Enumerator (`vhost_scanner.py`)** | L7 Reverse Proxy | ✅ **Tamamlandı** |
 | **Faz 6** | **Pipeline Entegrasyonu, Birleşik Raporlama & Staj Savunması** | Integration | 📋 Planlandı |
 
 ---

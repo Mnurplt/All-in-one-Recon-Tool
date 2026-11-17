@@ -15,8 +15,10 @@ from typing import List, Optional, Set
 
 import aiohttp
 import dns.asyncresolver
+import dns.exception
 import dns.resolver
 
+from rich.markup import escape
 from rich.progress import (
     Progress,
     SpinnerColumn,
@@ -60,8 +62,12 @@ async def detect_wildcard(target: str, resolver: dns.asyncresolver.Resolver) -> 
         answers = await resolver.resolve(test_subdomain, "A")
         for rdata in answers:
             wildcard_ips.add(rdata.to_text())
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.LifetimeTimeout, Exception):
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        # Expected: a random name does not exist -> no wildcard DNS.
         pass
+    except dns.exception.DNSException as e:
+        # Timeout / no reachable DNS server: the test is inconclusive, so tell the user.
+        log_warn(f"Wildcard DNS test inconclusive ({type(e).__name__}). Results may contain false positives.")
 
     return wildcard_ips
 
@@ -117,7 +123,8 @@ async def resolve_single_subdomain(
             cname_answers = await resolver.resolve(subdomain, "CNAME")
             for rdata in cname_answers:
                 cnames.append(rdata.target.to_text().rstrip("."))
-        except Exception:
+        except dns.exception.DNSException:
+            # No CNAME record, NXDOMAIN, timeout... (a missing CNAME is normal)
             pass
 
         # Step 2: Query A Records (IPv4)
@@ -125,7 +132,8 @@ async def resolve_single_subdomain(
             a_answers = await resolver.resolve(subdomain, "A")
             for rdata in a_answers:
                 ips.append(rdata.to_text())
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.LifetimeTimeout, Exception):
+        except dns.exception.DNSException:
+            # NXDOMAIN, NoAnswer, timeout, no nameservers: this candidate is not live
             pass
 
         # If no IPs were found, subdomain is not live
@@ -160,7 +168,8 @@ def load_subdomain_wordlist(wordlist_path: Path) -> List[str]:
         return ["www", "mail", "api", "dev", "test", "admin", "vpn", "staging", "app", "portal"]
     
     with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
-        return [line.strip().lower() for line in f if line.strip() and not line.startswith("#")]
+        words = (line.strip().lower() for line in f)
+        return [w for w in words if w and not w.startswith("#")]
 
 
 async def run_subdomain_scan(config: ReconConfig) -> List[SubdomainResult]:
@@ -179,7 +188,7 @@ async def run_subdomain_scan(config: ReconConfig) -> List[SubdomainResult]:
     log_info("Testing for Wildcard DNS configuration...")
     wildcard_ips = await detect_wildcard(target, resolver)
     if wildcard_ips:
-        log_warn(f"Wildcard DNS DETECTED! *. {target} resolves to: [bold yellow]{', '.join(wildcard_ips)}[/bold yellow]")
+        log_warn(f"Wildcard DNS DETECTED! *.{target} resolves to: [bold yellow]{', '.join(wildcard_ips)}[/bold yellow]")
         log_warn("False-positive filter active: Any result mapping exclusively to these IPs will be discarded.")
     else:
         log_success("Wildcard DNS is NOT active. DNS resolution results are distinct.")
@@ -228,14 +237,20 @@ async def run_subdomain_scan(config: ReconConfig) -> List[SubdomainResult]:
 
         async def worker(sub: str):
             source = candidate_sources[sub]
-            result = await resolve_single_subdomain(
-                subdomain=sub,
-                resolver=resolver,
-                semaphore=semaphore,
-                wildcard_ips=wildcard_ips,
-                source=source,
-            )
-            progress.advance(task)
+            try:
+                result = await resolve_single_subdomain(
+                    subdomain=sub,
+                    resolver=resolver,
+                    semaphore=semaphore,
+                    wildcard_ips=wildcard_ips,
+                    source=source,
+                )
+            except Exception as e:
+                log_warn(f"Unexpected error while resolving {escape(sub)}: {type(e).__name__}: {escape(str(e))}")
+                result = None
+            finally:
+                progress.advance(task)
+
             if result:
                 discovered_results.append(result)
                 log_success(f"Discovered: [bold green]{result.subdomain}[/bold green] -> [yellow]{', '.join(result.ips)}[/yellow] [dim]({result.source})[/dim]")

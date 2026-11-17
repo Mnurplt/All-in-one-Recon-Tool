@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional
 
+from rich.markup import escape
 from rich.progress import (
     Progress,
     SpinnerColumn,
@@ -98,7 +99,8 @@ async def grab_banner(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                         break
                 if not banner:
                     banner = text.splitlines()[0].strip() if text.splitlines() else ""
-    except Exception:
+    except (asyncio.TimeoutError, OSError):
+        # Banner is best-effort: a reset/timeout here must not fail the scan.
         pass
     finally:
         # Sanitize banner: remove extra newlines, keep single line, truncate
@@ -169,7 +171,7 @@ async def resolve_target(target: str) -> Optional[str]:
         if addr_info:
             return addr_info[0][4][0]
     except Exception as e:
-        log_error(f"DNS Resolution failed for {target}: {e}")
+        log_error(f"DNS Resolution failed for {escape(target)}: {escape(str(e))}")
     return None
 
 
@@ -216,7 +218,7 @@ async def run_port_scan(config: ReconConfig) -> List[PortScanResult]:
             progress.advance(task)
             if result and result.state == "open":
                 open_ports.append(result)
-                log_success(f"Port [bold green]{result.port}/TCP[/bold green] is OPEN ({result.service}) {f'-> [dim]{result.banner}[/dim]' if result.banner != '-' else ''}")
+                log_success(f"Port [bold green]{result.port}/TCP[/bold green] is OPEN ({result.service}) {f'-> [dim]{escape(result.banner)}[/dim]' if result.banner != '-' else ''}")
 
         # Fire all tasks concurrently
         await asyncio.gather(*(worker(port) for port in config.ports))
@@ -234,7 +236,7 @@ async def run_port_scan(config: ReconConfig) -> List[PortScanResult]:
             f"[bold green]{r.port}/tcp[/bold green]",
             f"[green]{r.state}[/green]",
             f"[cyan]{r.service}[/cyan]",
-            f"[dim]{r.banner}[/dim]",
+            f"[dim]{escape(r.banner)}[/dim]",
             f"{r.latency_ms} ms",
         )
         

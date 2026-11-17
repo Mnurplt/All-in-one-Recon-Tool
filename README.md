@@ -9,8 +9,8 @@ A high-performance, asynchronous reconnaissance framework written in modern Pyth
 * **Engine Architecture (Phase 1):** Non-blocking I/O powered by Python's `asyncio` event loop and `asyncio.Semaphore` concurrency limiting. Zero thread context-switching overhead, low memory footprint.
 * **L4 Network & Port Scanner (Phase 2):** Fast asynchronous TCP connect scan with automatic service identification and banner grabbing.
 * **L7 Subdomain Discovery (Phase 3):** High-speed asynchronous DNS resolution, wildcard DNS false-positive mitigation, and passive OSINT integration via `crt.sh`.
-* **L7 Directory & File Fuzzer (Phase 4):** Concurrent HTTP fuzzing with `aiohttp.ClientSession` connection pooling, recursive discovery, and Soft-404 detection.
-* **L7 Virtual Host (VHost) Enumerator (Phase 5):** HTTP `Host` header fuzzing with baseline response profiling and content-length/hash similarity comparison.
+* **L7 Directory & File Fuzzer (Phase 4):** Concurrent HTTP fuzzing with `aiohttp.ClientSession` connection pooling, recursive discovery, and soft-404 filtering for common web paths.
+* **L7 Virtual Host (VHost) Enumerator (Phase 5):** HTTP `Host` header fuzzing with baseline response comparison and candidate disambiguation.
 * **Cross-Platform & Containerized:** Native compatibility across Windows, macOS, and Linux, plus official **Docker container** support.
 * **Unified Reporting (Phase 6):** Rich terminal tables with real-time feedback and exportable structured reports (JSON/HTML/Markdown).
 

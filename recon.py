@@ -21,7 +21,14 @@ from core import (
     log_error,
     log_status,
 )
-from modules import run_port_scan, run_subdomain_scan
+from modules import run_dir_scan, run_port_scan, run_subdomain_scan, run_vhost_scan
+
+
+def _check_port(port: int) -> int:
+    """Raises ValueError if the port is outside the valid TCP range (1-65535)."""
+    if not 1 <= port <= 65535:
+        raise ValueError(f"Port out of range (1-65535): {port}")
+    return port
 
 
 def parse_ports(port_arg: str) -> list[int]:
@@ -33,9 +40,9 @@ def parse_ports(port_arg: str) -> list[int]:
     """
     if not port_arg:
         return []
-        
+
     port_arg = port_arg.strip().lower()
-    
+
     top_20 = [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995, 1723, 3306, 3389, 8080, 8443]
     top_100 = top_20 + [
         7, 9, 13, 26, 37, 79, 88, 106, 113, 119, 144, 179, 199, 389, 427, 465, 513, 514, 515, 543, 548, 554,
@@ -44,22 +51,34 @@ def parse_ports(port_arg: str) -> list[int]:
         5800, 5900, 6000, 6001, 6646, 7070, 8000, 8008, 8009, 8081, 8443, 8888, 9000, 9100, 9999, 10000,
         32768, 49152, 49153, 49154, 49155, 49156, 49157
     ]
-    
+
     if port_arg == "top20":
         return top_20
-    elif port_arg == "top100":
+    if port_arg == "top100":
         return sorted(list(set(top_100)))
-        
+
     ports = set()
     for part in port_arg.split(","):
         part = part.strip()
+        if not part:
+            continue
         if "-" in part:
-            start, end = part.split("-", 1)
-            ports.update(range(int(start), int(end) + 1))
+            start_s, end_s = part.split("-", 1)
+            if not (start_s.strip().isdigit() and end_s.strip().isdigit()):
+                raise ValueError(f"Invalid port range: '{part}'")
+            start, end = int(start_s), int(end_s)
+            if start > end:
+                raise ValueError(f"Invalid port range (start > end): '{part}'")
+            for port in range(start, end + 1):
+                ports.add(_check_port(port))
         elif part.isdigit():
-            ports.add(int(part))
-            
-    return sorted(list(ports))
+            ports.add(_check_port(int(part)))
+        else:
+            raise ValueError(f"Invalid port value: '{part}'")
+
+    if not ports:
+        raise ValueError("No valid ports were given.")
+    return sorted(ports)
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -147,9 +166,14 @@ async def main_async() -> None:
     
     parser = build_cli_parser()
     args = parser.parse_args()
-    
-    # Validate and clean target
-    target = args.target.strip().replace("http://", "").replace("https://", "").rstrip("/")
+
+    if args.concurrency < 1:
+        parser.error("--concurrency must be at least 1")
+    if args.timeout <= 0:
+        parser.error("--timeout must be greater than 0")
+
+    # Validate and clean target (drop scheme and any path: 'https://example.com/a/b' -> 'example.com')
+    target = args.target.strip().replace("http://", "").replace("https://", "").split("/")[0]
     if not target:
         log_error("Target cannot be empty!")
         sys.exit(1)
@@ -179,7 +203,11 @@ async def main_async() -> None:
     
     if should_scan_ports:
         port_spec = args.ports if args.ports else "top20"
-        config.ports = parse_ports(port_spec)
+        try:
+            config.ports = parse_ports(port_spec)
+        except ValueError as e:
+            log_error(str(e))
+            sys.exit(1)
         
     log_info(f"Target: [bold white]{config.target}[/bold white]")
     log_info(f"Concurrency Limit (Semaphore): [bold yellow]{config.concurrency_limit}[/bold yellow]")
@@ -212,17 +240,21 @@ async def main_async() -> None:
         subs_result = await run_subdomain_scan(config)
         scan_results["subdomains"] = [asdict(r) for r in subs_result]
         
-    # Phase 4 & 5: Future Modules hook here
     if should_scan_dirs:
-        log_warn("Directory fuzzing module scheduled for Phase 4.")
+        dirs_result = await run_dir_scan(config)
+        scan_results["directories"] = [asdict(r) for r in dirs_result]
     if should_scan_vhosts:
-        log_warn("VHost module scheduled for Phase 5.")
-        
+        vhost_result = await run_vhost_scan(config)
+        scan_results["vhosts"] = [asdict(r) for r in vhost_result]
+
     # Save results to JSON if requested
     if args.output:
         out_path = Path(args.output)
-        out_path.write_text(json.dumps(scan_results, indent=2), encoding="utf-8")
-        log_success(f"Results saved to: [bold white]{out_path.resolve()}[/bold white]")
+        try:
+            out_path.write_text(json.dumps(scan_results, indent=2), encoding="utf-8")
+            log_success(f"Results saved to: [bold white]{out_path.resolve()}[/bold white]")
+        except OSError as e:
+            log_error(f"Could not write results to '{out_path}': {e}")
 
 
 def main() -> None:
